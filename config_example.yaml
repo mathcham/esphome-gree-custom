@@ -1,0 +1,64 @@
+external_components:
+  - source:
+      type: git
+      url: https://github.com/mathcham/esphome-gree-custom
+      ref: main
+    components: [gree]
+    refresh: 1h
+
+remote_transmitter:
+  id: ir_tx
+  pin: GPIO14
+  carrier_duty_percent: 50%
+
+climate:
+  - platform: gree
+    name: "AC"
+    id: my_gree_ac
+    model: yac1fb9
+    transmitter_id: ir_tx
+
+# Feature switches — same device card in HA
+switch:
+  - platform: gree
+    gree_id: my_gree_ac
+    turbo:
+      name: "AC Turbo"
+    xfan:
+      name: "AC X-Fan"
+    light:
+      name: "AC LED"
+    health:
+      name: "AC Health"
+
+# Per-axis swing position selects — same device card in HA
+# Options for both axes: Off | Swing | 1 | 2 | 3 | 4 | 5
+#
+# Vertical:    1=Up  2=Mid-up  3=Middle  4=Mid-down  5=Down
+# Horizontal:  1=Left  2=Mid-left  3=Center  4=Mid-right  5=Right
+select:
+  - platform: gree
+    gree_id: my_gree_ac
+    vertical_swing:
+      name: "AC Vertical Position"
+    horizontal_swing:
+      name: "AC Horizontal Position"
+
+# ── Behaviour notes ──────────────────────────────────────────────────────────
+#
+# The coarse swing_mode on the climate entity (Off/Vertical/Horizontal/Both)
+# and the per-axis selects coexist:
+#
+#   • If a per-axis select is set to "Swing" or a fixed position (1–5),
+#     it takes priority over the climate swing_mode for that axis.
+#
+#   • If a per-axis select is set to "Off", the axis follows the climate
+#     swing_mode entity for that axis.
+#
+#   • Setting swing_mode to Off/Vertical/Horizontal/Both on the climate
+#     entity from HA still works as before — it is shadowed per-axis only
+#     when the corresponding select is set to something other than "Off".
+#
+# Example: lock vertical to "Middle" while horizontal auto-swings:
+#   select.set_option: { entity: select.ac_vertical_position,   option: "3" }
+#   select.set_option: { entity: select.ac_horizontal_position, option: "Swing" }
