@@ -40,7 +40,7 @@ void GreeClimate::set_model(Model model) {
     this->presets_.insert(climate::CLIMATE_PRESET_SLEEP);
   }
 
-  this->set_custom_fan_modes({
+  this->set_supported_custom_fan_modes({
       GREE_CUSTOM_FAN_QUIET,
       GREE_CUSTOM_FAN_LOW_MEDIUM,
       GREE_CUSTOM_FAN_MEDIUM_HIGH,
@@ -164,12 +164,12 @@ void GreeClimate::transmit_state() {
 
   // Non-YX1FF Turbo custom fan mode: also set turbo bit in byte 2
   if (this->model_ != GREE_YX1FF && this->has_custom_fan_mode() &&
-      *this->get_custom_fan_mode() == GREE_CUSTOM_FAN_TURBO_SPEED) {
+      this->get_custom_fan_mode() == GREE_CUSTOM_FAN_TURBO_SPEED) {
     remote_state[2] |= GREE_TURBO_BIT;
   }
 
   // Quiet: set bit 7 of byte 0
-  if (this->has_custom_fan_mode() && *this->get_custom_fan_mode() == GREE_CUSTOM_FAN_QUIET) {
+  if (this->has_custom_fan_mode() && this->get_custom_fan_mode() == GREE_CUSTOM_FAN_QUIET) {
     remote_state[0] |= GREE_FAN_QUIET_BIT;
   }
 
@@ -273,7 +273,7 @@ uint8_t GreeClimate::operation_mode_() {
 uint8_t GreeClimate::fan_speed_() {
   // Custom fan modes take priority
   if (this->has_custom_fan_mode()) {
-    const auto &cfm = *this->get_custom_fan_mode();
+    auto cfm = this->get_custom_fan_mode();
     if (cfm == GREE_CUSTOM_FAN_QUIET)       return GREE_FAN_AUTO;  // quiet bit set separately
     if (cfm == GREE_CUSTOM_FAN_LOW_MEDIUM)  return GREE_FAN_2;
     if (cfm == GREE_CUSTOM_FAN_MEDIUM_HIGH) return GREE_FAN_4;
