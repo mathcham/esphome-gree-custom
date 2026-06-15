@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import select
-from esphome.components.gree import gree_ns, GreeClimate, GreeSwingSelect
+from esphome.components.gree import GreeClimate, GreeSwingSelect
 
 AUTO_LOAD = ["select"]
 
@@ -9,7 +9,7 @@ CONF_GREE_ID    = "gree_id"
 CONF_VERTICAL   = "vertical_swing"
 CONF_HORIZONTAL = "horizontal_swing"
 
-# The seven option strings must match the constants in gree.h exactly
+# Must match the SWING_OPT_* constants in gree.h exactly
 SWING_OPTIONS = ["Off", "Swing", "1", "2", "3", "4", "5"]
 
 

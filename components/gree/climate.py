@@ -7,7 +7,6 @@ AUTO_LOAD = ["climate_ir"]
 
 CONF_MODEL = "model"
 
-# Extend the standard climate_ir schema (handles transmitter_id, receiver_id, etc.)
 CONFIG_SCHEMA = climate_ir.climate_ir_with_receiver_schema(GreeClimate).extend(
     {
         cv.Required(CONF_MODEL): cv.enum(MODELS, lower=True),
