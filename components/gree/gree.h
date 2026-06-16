@@ -81,7 +81,7 @@ static constexpr uint32_t GREE_YAC_HEADER_SPACE      = 3000;
 static constexpr uint32_t GREE_YAC_BIT_MARK          = 650;
 static constexpr uint32_t GREE_YAC1FB9_HEADER_SPACE  = 4500;
 static constexpr uint32_t GREE_YAC1FB9_MESSAGE_SPACE = 19980;
-static constexpr uint32_t GREE_REPEAT_GAP           = 100000;  // 100ms silence between frame repetitions
+static constexpr uint32_t GREE_REPEAT_GAP_MS        = 100;     // 100ms silence between frame repetitions
 
 // ── Model codes ───────────────────────────────────────────────────────────────
 enum Model { GREE_GENERIC, GREE_YAN, GREE_YAA, GREE_YAC, GREE_YAC1FB9, GREE_YX1FF, GREE_YAG };
