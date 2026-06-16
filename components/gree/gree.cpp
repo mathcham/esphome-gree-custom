@@ -240,36 +240,47 @@ void GreeClimate::transmit_state() {
     message_space  = GREE_MESSAGE_SPACE;
   }
 
+  // Helper lambda to append one complete Gree frame into the buffer
+  auto append_frame = [&]() {
+    data->mark(header_mark);
+    data->space(header_space);
+
+    // Block 1: bytes 0-3, LSB first
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 8; j++) {
+        data->mark(bit_mark);
+        data->space((remote_state[i] & (1 << j)) ? GREE_ONE_SPACE : GREE_ZERO_SPACE);
+      }
+    }
+
+    // Inter-block separator: 0, 0, 1
+    data->mark(bit_mark); data->space(GREE_ZERO_SPACE);
+    data->mark(bit_mark); data->space(GREE_ZERO_SPACE);
+    data->mark(bit_mark); data->space(GREE_ONE_SPACE);
+
+    data->mark(bit_mark);
+    data->space(message_space);
+
+    // Block 2: bytes 4-7, LSB first
+    for (int i = 4; i < 8; i++) {
+      for (int j = 0; j < 8; j++) {
+        data->mark(bit_mark);
+        data->space((remote_state[i] & (1 << j)) ? GREE_ONE_SPACE : GREE_ZERO_SPACE);
+      }
+    }
+
+    data->mark(bit_mark);
+    data->space(GREE_ZERO_SPACE);
+  };
+
   data->set_carrier_frequency(GREE_IR_FREQUENCY);
-  data->mark(header_mark);
-  data->space(header_space);
 
-  // Block 1: bytes 0–3, LSB first
-  for (int i = 0; i < 4; i++) {
-    for (int j = 0; j < 8; j++) {
-      data->mark(bit_mark);
-      data->space((remote_state[i] & (1 << j)) ? GREE_ONE_SPACE : GREE_ZERO_SPACE);
-    }
-  }
-
-  // Inter-block separator: 0, 0, 1
-  data->mark(bit_mark); data->space(GREE_ZERO_SPACE);
-  data->mark(bit_mark); data->space(GREE_ZERO_SPACE);
-  data->mark(bit_mark); data->space(GREE_ONE_SPACE);
-
-  data->mark(bit_mark);
-  data->space(message_space);
-
-  // Block 2: bytes 4–7, LSB first
-  for (int i = 4; i < 8; i++) {
-    for (int j = 0; j < 8; j++) {
-      data->mark(bit_mark);
-      data->space((remote_state[i] & (1 << j)) ? GREE_ONE_SPACE : GREE_ZERO_SPACE);
-    }
-  }
-
-  data->mark(bit_mark);
-  data->space(GREE_ZERO_SPACE);
+  // Transmit 3 times with ~100ms silence between frames, matching original remote behaviour
+  append_frame();
+  data->space(GREE_REPEAT_GAP);
+  append_frame();
+  data->space(GREE_REPEAT_GAP);
+  append_frame();
 
   transmit.perform();
 }
