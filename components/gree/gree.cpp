@@ -141,10 +141,8 @@ void GreeClimate::transmit_state() {
   if (this->model_ == GREE_YAA || this->model_ == GREE_YAC || this->model_ == GREE_YAC1FB9) {
     remote_state[2] = 0x20;
     remote_state[3] = 0x50;
-    // ── YAC1FB9 confirmed constants from IR captures ──
-    remote_state[5] = 0x80;  // model constant (was wrong 0x20 in upstream)
-    remote_state[6] = 0x00;  // reserved      (was wrong 0x20 in upstream)
-    // Both swing axes in byte 4
+    remote_state[6] = 0x20;  // keep upstream value
+    // Both swing axes in byte 4 (confirmed from IR captures)
     remote_state[4] = (sv & 0x0F) | ((sh & 0x07) << 4);
   }
 
@@ -179,27 +177,8 @@ void GreeClimate::transmit_state() {
     remote_state[7] = (((remote_state[0] & 0x0F) + (remote_state[1] & 0x0F) +
                          (remote_state[2] & 0x0F) + (remote_state[3] & 0x0F)) &
                         0x0F) << 4;
-  } else if (this->model_ == GREE_YAC1FB9) {
-    // YAC1FB9-specific checksum confirmed by IR capture analysis:
-    //   byte0 included with SwingAuto (bit6) and Quiet (bit7) masked out
-    //   SwingV (byte4 low nibble) excluded from sum
-    //   SwingH (byte4 high nibble) included
-    //   bytes 5-6 included normally; offset=3; result in high nibble only
-    uint8_t b0_cs = remote_state[0] & 0x3F;
-    uint8_t sum = 3;
-    sum += (b0_cs & 0x0F) + (b0_cs >> 4);
-    for (int i = 1; i < 4; i++) {
-      sum += (remote_state[i] & 0x0F);
-      sum += (remote_state[i] >> 4);
-    }
-    sum += (remote_state[4] >> 4);  // SwingH only, not SwingV
-    for (int i = 5; i < 7; i++) {
-      sum += (remote_state[i] & 0x0F);
-      sum += (remote_state[i] >> 4);
-    }
-    remote_state[7] = (sum & 0x0F) << 4;
   } else {
-    // Kelvinator-style block checksum for YAA/YAC/YAG/GENERIC
+    // Kelvinator-style block checksum for YAA/YAC/YAC1FB9/YAG/GENERIC
     uint8_t sum = 10;
     for (int i = 0; i < 4; i++) {
       sum += (remote_state[i] & 0x0F);
