@@ -251,12 +251,8 @@ void GreeClimate::transmit_state() {
 
   data->set_carrier_frequency(GREE_IR_FREQUENCY);
 
-  // Transmit 3 frames in a single buffer with inter-frame gap between them.
-  // This works correctly regardless of blocking/non-blocking transmitter mode.
-  append_frame();
-  data->space(GREE_REPEAT_GAP);
-  append_frame();
-  data->space(GREE_REPEAT_GAP);
+  // Single frame transmission — matching upstream ESPHome Gree behaviour.
+  // The upstream component transmitted once and worked for basic commands.
   append_frame();
 
   transmit.perform();
