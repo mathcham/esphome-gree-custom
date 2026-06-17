@@ -71,11 +71,11 @@ static constexpr const char *SWING_OPT_5     = "5";  // V: down      H: right
 // ── IR timing ────────────────────────────────────────────────────────────────
 static constexpr uint32_t GREE_IR_FREQUENCY          = 38000;
 static constexpr uint32_t GREE_HEADER_MARK           = 9000;
-static constexpr uint32_t GREE_HEADER_SPACE          = 4000;
+static constexpr uint32_t GREE_HEADER_SPACE          = 4500;  // confirmed from upstream log and original remote
 static constexpr uint32_t GREE_BIT_MARK              = 620;
 static constexpr uint32_t GREE_ONE_SPACE             = 1600;
 static constexpr uint32_t GREE_ZERO_SPACE            = 540;
-static constexpr uint32_t GREE_MESSAGE_SPACE         = 19000;
+static constexpr uint32_t GREE_MESSAGE_SPACE         = 19980;  // confirmed from upstream log
 static constexpr uint32_t GREE_YAC_HEADER_MARK       = 6000;
 static constexpr uint32_t GREE_YAC_HEADER_SPACE      = 3000;
 static constexpr uint32_t GREE_YAC_BIT_MARK          = 650;
