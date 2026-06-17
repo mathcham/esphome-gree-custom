@@ -57,6 +57,11 @@ void GreeClimate::set_mode_bit(uint8_t bit_mask, bool enabled) {
     this->mode_bits_ |= bit_mask;
   } else {
     this->mode_bits_ &= ~bit_mask;
+    // YAC1FB9 requires GREE_LIGHT_BIT (0x20) always set in byte 2 — the upstream
+    // never sends byte2=0x00. Clearing it causes the AC to ignore all commands.
+    if (this->model_ == GREE_YAC1FB9) {
+      this->mode_bits_ |= GREE_LIGHT_BIT;
+    }
   }
   this->transmit_state();
 }
