@@ -292,10 +292,18 @@ uint8_t GreeClimate::fan_speed_() {
 }
 
 uint8_t GreeClimate::temperature_() {
-  // Low nibble only — no timer bits, no I-Feel bit
-  return (uint8_t) roundf(
+  // Low nibble = temperature offset from min.
+  // Bit 4 (0x10) must be set for YAC1FB9 — confirmed from upstream working frames:
+  // upstream sends 0x13 for 19C, 0x14 for 20C etc. Without this bit the AC
+  // silently ignores all commands. Despite appearing as a "TimerHalfHr" bit
+  // in the IRremoteESP8266 struct it is a required protocol flag for this model.
+  uint8_t temp = (uint8_t) roundf(
       clamp(this->target_temperature, (float)GREE_TEMP_MIN, (float)GREE_TEMP_MAX)
   ) - GREE_TEMP_MIN;
+  if (this->model_ == GREE_YAC1FB9) {
+    temp |= 0x10;
+  }
+  return temp;
 }
 
 uint8_t GreeClimate::preset_() {
