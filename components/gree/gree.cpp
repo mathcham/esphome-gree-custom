@@ -202,17 +202,14 @@ void GreeClimate::transmit_state() {
 
   uint32_t header_mark, header_space, bit_mark, message_space;
 
-  if (this->model_ == GREE_YAC1FB9) {
-    header_mark    = GREE_YAC_HEADER_MARK;
-    header_space   = GREE_YAC1FB9_HEADER_SPACE;
-    bit_mark       = GREE_YAC_BIT_MARK;
-    message_space  = GREE_YAC1FB9_MESSAGE_SPACE;
-  } else if (this->model_ == GREE_YAC || this->model_ == GREE_YAA) {
+  if (this->model_ == GREE_YAC || this->model_ == GREE_YAA) {
     header_mark    = GREE_YAC_HEADER_MARK;
     header_space   = GREE_YAC_HEADER_SPACE;
     bit_mark       = GREE_YAC_BIT_MARK;
     message_space  = GREE_MESSAGE_SPACE;
   } else {
+    // YAC1FB9 uses generic 9000µs header (confirmed: upstream ESP sent 9063µs)
+    // not the 6000µs YAC header despite the model name suggesting otherwise
     header_mark    = GREE_HEADER_MARK;
     header_space   = GREE_HEADER_SPACE;
     bit_mark       = GREE_BIT_MARK;
