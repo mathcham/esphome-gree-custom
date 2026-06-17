@@ -216,11 +216,8 @@ void GreeClimate::transmit_state() {
     message_space  = GREE_MESSAGE_SPACE;
   }
 
-  // Helper lambda to build and fire one complete Gree frame
-  auto send_frame = [&]() {
-    data->reset();
-    data->set_carrier_frequency(GREE_IR_FREQUENCY);
-
+  // Helper lambda to append one complete Gree frame into the shared buffer
+  auto append_frame = [&]() {
     data->mark(header_mark);
     data->space(header_space);
 
@@ -250,16 +247,19 @@ void GreeClimate::transmit_state() {
 
     data->mark(bit_mark);
     data->space(GREE_ZERO_SPACE);
-
-    transmit.perform();
   };
 
-  // Transmit 3 times with 100ms silence between frames, matching original remote behaviour
-  send_frame();
-  delay(GREE_REPEAT_GAP_MS);
-  send_frame();
-  delay(GREE_REPEAT_GAP_MS);
-  send_frame();
+  data->set_carrier_frequency(GREE_IR_FREQUENCY);
+
+  // Transmit 3 frames in a single buffer with inter-frame gap between them.
+  // This works correctly regardless of blocking/non-blocking transmitter mode.
+  append_frame();
+  data->space(GREE_REPEAT_GAP);
+  append_frame();
+  data->space(GREE_REPEAT_GAP);
+  append_frame();
+
+  transmit.perform();
 }
 
 // ── Helper encoders ───────────────────────────────────────────────────────────
