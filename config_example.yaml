@@ -10,55 +10,54 @@ remote_transmitter:
   id: ir_tx
   pin: GPIO14
   carrier_duty_percent: 50%
+  use_dma: true
+  non_blocking: false
+  rmt_symbols: 300
 
+# ── Climate ───────────────────────────────────────────────────────────────────
+# Fan modes: auto | low | medium | high | quiet | turbo | low_med | med_high
+#
+# Note on low_med / med_high:
+#   The confirmed YAC1FB9 protocol has 4 discrete fan speeds (2-bit field).
+#   low_med maps to FAN_1 (low) and med_high maps to FAN_3 (high) until IR
+#   captures from the physical remote confirm different encodings.
 climate:
   - platform: gree
     name: "AC"
-    id: my_gree_ac
+    id: my_ac
     model: yac1fb9
     transmitter_id: ir_tx
+    # sensor: room_temp   # optional temperature sensor for current reading
 
-# Feature switches — same device card in HA
+# ── Feature switches ──────────────────────────────────────────────────────────
 switch:
   - platform: gree
-    gree_id: my_gree_ac
+    gree_id: my_ac
     turbo:
       name: "AC Turbo"
-    xfan:
-      name: "AC X-Fan"
     light:
-      name: "AC LED"
+      name: "AC Light"
     health:
       name: "AC Health"
+    xfan:
+      name: "AC X-Fan"
 
-# Per-axis swing position selects — same device card in HA
-# Options for both axes: Off | Swing | 1 | 2 | 3 | 4 | 5
+# ── Per-axis swing selects ────────────────────────────────────────────────────
+# Options: Off | Swing | 1 | 2 | 3 | 4 | 5
+#   Vertical:   1=Up  2=Mid-up  3=Middle  4=Mid-down  5=Down
+#   Horizontal: 1=Left  2=Mid-left  3=Center  4=Mid-right  5=Right
 #
-# Vertical:    1=Up  2=Mid-up  3=Middle  4=Mid-down  5=Down
-# Horizontal:  1=Left  2=Mid-left  3=Center  4=Mid-right  5=Right
+# Note on horizontal swing:
+#   H-swing byte position is inferred from the YAC model (byte 4 bits 4-6).
+#   If vanes do not respond, capture raw IR from the physical remote with:
+#     remote_receiver:
+#       pin: GPIOXX
+#       dump: raw
+#   and compare the frame byte that changes when pressing the H-swing button.
 select:
   - platform: gree
-    gree_id: my_gree_ac
+    gree_id: my_ac
     vertical_swing:
       name: "AC Vertical Position"
     horizontal_swing:
       name: "AC Horizontal Position"
-
-# ── Behaviour notes ──────────────────────────────────────────────────────────
-#
-# The coarse swing_mode on the climate entity (Off/Vertical/Horizontal/Both)
-# and the per-axis selects coexist:
-#
-#   • If a per-axis select is set to "Swing" or a fixed position (1–5),
-#     it takes priority over the climate swing_mode for that axis.
-#
-#   • If a per-axis select is set to "Off", the axis follows the climate
-#     swing_mode entity for that axis.
-#
-#   • Setting swing_mode to Off/Vertical/Horizontal/Both on the climate
-#     entity from HA still works as before — it is shadowed per-axis only
-#     when the corresponding select is set to something other than "Off".
-#
-# Example: lock vertical to "Middle" while horizontal auto-swings:
-#   select.set_option: { entity: select.ac_vertical_position,   option: "3" }
-#   select.set_option: { entity: select.ac_horizontal_position, option: "Swing" }

@@ -1,11 +1,23 @@
 import esphome.codegen as cg
-import esphome.config_validation as cv
 from esphome.components import climate_ir
-from esphome.components.gree import gree_ns, GreeClimate, MODELS
+import esphome.config_validation as cv
+from esphome.const import CONF_MODEL
 
+from . import gree_ns, GreeClimate
+
+CODEOWNERS = ["@mathcham"]
 AUTO_LOAD = ["climate_ir"]
 
-CONF_MODEL = "model"
+Model = gree_ns.enum("Model")
+MODELS = {
+    "yac1fb9": Model.GREE_YAC1FB9,
+    "yan":     Model.GREE_YAN,
+    "yaa":     Model.GREE_YAA,
+    "yac":     Model.GREE_YAC,
+    "yx1ff":   Model.GREE_YX1FF,
+    "yag":     Model.GREE_YAG,
+    "generic": Model.GREE_GENERIC,
+}
 
 CONFIG_SCHEMA = climate_ir.climate_ir_with_receiver_schema(GreeClimate).extend(
     {

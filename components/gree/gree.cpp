@@ -1,37 +1,32 @@
 #include "gree.h"
-#include "esphome/components/remote_base/remote_base.h"
 #include "esphome/core/log.h"
 
-namespace esphome::gree {
+namespace esphome {
+namespace gree {
 
 static const char *const TAG = "gree.climate";
 
-// ── Option ↔ nibble conversion ────────────────────────────────────────────────
-
-uint8_t GreeClimate::option_to_nibble(const std::string &opt) {
-  if (opt == SWING_OPT_OFF)   return GREE_SWING_OFF;
-  if (opt == SWING_OPT_SWING) return GREE_SWING_SWING;
-  if (opt == SWING_OPT_1)     return GREE_SWING_POS1;
-  if (opt == SWING_OPT_2)     return GREE_SWING_POS2;
-  if (opt == SWING_OPT_3)     return GREE_SWING_POS3;
-  if (opt == SWING_OPT_4)     return GREE_SWING_POS4;
-  if (opt == SWING_OPT_5)     return GREE_SWING_POS5;
-  return GREE_SWING_OFF;
+uint8_t GreeClimate::option_to_pos(const std::string &opt) {
+  if (opt == SWING_OPT_SWING) return GREE_VDIR_SWING;
+  if (opt == SWING_OPT_POS1)  return GREE_VDIR_UP;
+  if (opt == SWING_OPT_POS2)  return GREE_VDIR_MUP;
+  if (opt == SWING_OPT_POS3)  return GREE_VDIR_MIDDLE;
+  if (opt == SWING_OPT_POS4)  return GREE_VDIR_MDOWN;
+  if (opt == SWING_OPT_POS5)  return GREE_VDIR_DOWN;
+  return GREE_VDIR_OFF;
 }
 
-std::string GreeClimate::nibble_to_option(uint8_t nibble) {
-  switch (nibble) {
-    case GREE_SWING_SWING: return SWING_OPT_SWING;
-    case GREE_SWING_POS1:  return SWING_OPT_1;
-    case GREE_SWING_POS2:  return SWING_OPT_2;
-    case GREE_SWING_POS3:  return SWING_OPT_3;
-    case GREE_SWING_POS4:  return SWING_OPT_4;
-    case GREE_SWING_POS5:  return SWING_OPT_5;
+std::string GreeClimate::pos_to_option(uint8_t pos) {
+  switch (pos) {
+    case GREE_VDIR_SWING:  return SWING_OPT_SWING;
+    case GREE_VDIR_UP:     return SWING_OPT_POS1;
+    case GREE_VDIR_MUP:    return SWING_OPT_POS2;
+    case GREE_VDIR_MIDDLE: return SWING_OPT_POS3;
+    case GREE_VDIR_MDOWN:  return SWING_OPT_POS4;
+    case GREE_VDIR_DOWN:   return SWING_OPT_POS5;
     default:               return SWING_OPT_OFF;
   }
 }
-
-// ── Model setup ───────────────────────────────────────────────────────────────
 
 void GreeClimate::set_model(Model model) {
   if (model == GREE_YX1FF) {
@@ -39,282 +34,208 @@ void GreeClimate::set_model(Model model) {
     this->presets_.insert(climate::CLIMATE_PRESET_NONE);
     this->presets_.insert(climate::CLIMATE_PRESET_SLEEP);
   }
-
-  this->set_supported_custom_fan_modes({
-      GREE_CUSTOM_FAN_QUIET,
-      GREE_CUSTOM_FAN_LOW_MEDIUM,
-      GREE_CUSTOM_FAN_MEDIUM_HIGH,
-      GREE_CUSTOM_FAN_TURBO_SPEED,
-  });
-
+  if (model == GREE_YAN) {
+    this->swing_modes_.erase(climate::CLIMATE_SWING_HORIZONTAL);
+    this->swing_modes_.erase(climate::CLIMATE_SWING_BOTH);
+  }
   this->model_ = model;
 }
 
-// ── Mode bit control (turbo / light / health / xfan switches) ─────────────────
+climate::ClimateTraits GreeClimate::traits() {
+  auto t = climate_ir::ClimateIR::traits();
+  t.add_supported_custom_fan_mode(GREE_FAN_TURBO);
+  t.add_supported_custom_fan_mode(GREE_FAN_LOW_MED);
+  t.add_supported_custom_fan_mode(GREE_FAN_MED_HIGH);
+  return t;
+}
+
+void GreeClimate::control(const climate::ClimateCall &call) {
+  if (call.get_mode().has_value())
+    this->mode = *call.get_mode();
+  if (call.get_target_temperature().has_value())
+    this->target_temperature = *call.get_target_temperature();
+  if (call.get_fan_mode().has_value()) {
+    this->fan_mode = call.get_fan_mode();
+    this->custom_fan_mode.reset();
+  }
+  if (call.get_custom_fan_mode().has_value()) {
+    this->custom_fan_mode = call.get_custom_fan_mode();
+    this->fan_mode.reset();
+  }
+  if (call.get_swing_mode().has_value())
+    this->swing_mode = *call.get_swing_mode();
+  if (call.get_preset().has_value())
+    this->preset = call.get_preset();
+  this->transmit_state();
+  this->publish_state();
+}
 
 void GreeClimate::set_mode_bit(uint8_t bit_mask, bool enabled) {
-  if (enabled) {
+  if (enabled)
     this->mode_bits_ |= bit_mask;
-  } else {
+  else
     this->mode_bits_ &= ~bit_mask;
-    // YAC1FB9 requires GREE_LIGHT_BIT (0x20) always set in byte 2 — the upstream
-    // never sends byte2=0x00. Clearing it causes the AC to ignore all commands.
-    if (this->model_ == GREE_YAC1FB9) {
-      this->mode_bits_ |= GREE_LIGHT_BIT;
-    }
-  }
   this->transmit_state();
 }
 
-// ── Per-axis swing control (called by GreeSwingSelect) ───────────────────────
-
-void GreeClimate::set_swing_v(uint8_t nibble) {
-  this->swing_v_ = nibble;
+void GreeClimate::set_swing_v(uint8_t pos) {
+  this->swing_v_ = pos;
   this->transmit_state();
 }
 
-void GreeClimate::set_swing_h(uint8_t nibble) {
-  this->swing_h_ = nibble;
+void GreeClimate::set_swing_h(uint8_t pos) {
+  this->swing_h_ = pos;
   this->transmit_state();
 }
-
-// ── Effective swing per axis ──────────────────────────────────────────────────
-// 0xFF = "not overridden by select" → fall back to coarse swing_mode entity.
-// Any other value = per-axis select takes precedence.
-
-uint8_t GreeClimate::effective_swing_v_() {
-  if (this->swing_v_ != 0xFF)
-    return this->swing_v_;
-  // Fall back to swing_mode entity
-  switch (this->swing_mode) {
-    case climate::CLIMATE_SWING_VERTICAL:
-    case climate::CLIMATE_SWING_BOTH:
-      return GREE_SWING_SWING;
-    default:
-      return GREE_SWING_OFF;
-  }
-}
-
-uint8_t GreeClimate::effective_swing_h_() {
-  if (this->swing_h_ != 0xFF)
-    return this->swing_h_;
-  switch (this->swing_mode) {
-    case climate::CLIMATE_SWING_HORIZONTAL:
-    case climate::CLIMATE_SWING_BOTH:
-      return GREE_SWING_SWING;
-    default:
-      return GREE_SWING_OFF;
-  }
-}
-
-// ── Transmit ──────────────────────────────────────────────────────────────────
 
 void GreeClimate::transmit_state() {
-  uint8_t remote_state[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00};
+  uint8_t rs[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00};
 
-  remote_state[0] = this->fan_speed_() | this->operation_mode_();
-  remote_state[1] = this->temperature_();
-
-  uint8_t sv = this->effective_swing_v_();
-  uint8_t sh = this->effective_swing_h_();
-
-  // SwingAuto flag: set whenever either axis is in auto-swing (nibble == 1)
-  if (sv == GREE_SWING_SWING || sh == GREE_SWING_SWING)
-    remote_state[0] |= GREE_SWING_AUTO_BIT;
+  rs[0] = this->encode_fan_() | this->encode_mode_();
+  rs[1] = this->encode_temp_();
 
   if (this->model_ == GREE_YAN) {
-    remote_state[2] = 0x20;
-    remote_state[3] = 0x50;
-    remote_state[4] = sv;  // YAN: vertical only, byte 4 low nibble
+    rs[2] = 0x20;
+    rs[3] = 0x50;
+    rs[4] = this->swing_v_;
   }
 
   if (this->model_ == GREE_YX1FF || this->model_ == GREE_YAG) {
-    remote_state[2] = 0x60;
-    remote_state[3] = 0x50;
-    remote_state[4] = (sv & 0x0F) | ((sh & 0x07) << 4);
+    rs[2] = 0x60;
+    rs[3] = 0x50;
+    rs[4] = (this->swing_v_ & 0x0F) | ((this->swing_h_ & 0x07) << 4);
   }
 
   if (this->model_ == GREE_YAG) {
-    remote_state[5] = 0x40;
+    rs[5] = 0x40;
   }
 
-  if (this->model_ == GREE_YAC || this->model_ == GREE_YAG) {
-    // horizontal swing shares byte 4 high nibble for these models too
-    remote_state[4] = (sv & 0x0F) | ((sh & 0x07) << 4);
+  if (this->model_ == GREE_YAC) {
+    rs[2] = 0x20;
+    rs[3] = 0x50;
+    rs[4] = (this->swing_v_ & 0x0F) | ((this->swing_h_ & 0x07) << 4);
   }
 
-  if (this->model_ == GREE_YAA || this->model_ == GREE_YAC || this->model_ == GREE_YAC1FB9) {
-    remote_state[2] = 0x20;
-    remote_state[3] = 0x50;
-    remote_state[6] = 0x20;  // keep upstream value
-    // Both swing axes in byte 4 (confirmed from IR captures)
-    remote_state[4] = (sv & 0x0F) | ((sh & 0x07) << 4);
+  if (this->model_ == GREE_YAA || this->model_ == GREE_YAC1FB9) {
+    rs[2] = 0x20;
+    rs[3] = 0x50;
+    rs[6] = 0x20;
+    if (this->swing_v_ == GREE_VDIR_SWING) {
+      rs[0] |= (1 << 6);
+    } else if (this->swing_v_ != GREE_VDIR_OFF) {
+      rs[5] = this->swing_v_;
+    }
+    rs[4] = (uint8_t)(this->swing_h_ << 4);
   }
 
-  // Merge feature flag bits into byte 2 (turbo/light/health/xfan)
   if (this->model_ == GREE_YAN || this->model_ == GREE_YAA ||
       this->model_ == GREE_YAC || this->model_ == GREE_YAC1FB9) {
-    remote_state[2] = (remote_state[2] & 0x0F) | this->mode_bits_;
+    rs[2] = (rs[2] & 0x0F) | this->mode_bits_;
   }
 
-  // YX1FF: turbo speed bit + sleep preset
+  if (this->custom_fan_mode.has_value() && *this->custom_fan_mode == GREE_FAN_TURBO) {
+    rs[2] |= GREE_BIT_TURBO;
+  }
+
   if (this->model_ == GREE_YX1FF) {
-    if (this->fan_speed_() == GREE_FAN_TURBO)
-      remote_state[2] |= GREE_FAN_TURBO_BIT_YX;
-    if (this->preset_() == climate::CLIMATE_PRESET_SLEEP)
-      remote_state[0] |= GREE_PRESET_SLEEP_BIT;
-  }
-
-  // Non-YX1FF Turbo custom fan mode: also set turbo bit in byte 2
-  if (this->model_ != GREE_YX1FF && this->has_custom_fan_mode() &&
-      this->get_custom_fan_mode() == GREE_CUSTOM_FAN_TURBO_SPEED) {
-    remote_state[2] |= GREE_TURBO_BIT;
-  }
-
-  // Quiet: set bit 7 of byte 0
-  if (this->has_custom_fan_mode() && this->get_custom_fan_mode() == GREE_CUSTOM_FAN_QUIET) {
-    remote_state[0] |= GREE_FAN_QUIET_BIT;
-  }
-
-  // ── Checksum ─────────────────────────────────────────────────────────────────
-  if (this->model_ == GREE_YAN || this->model_ == GREE_YX1FF) {
-    // Simple nibble sum of bytes 0-3, stored in high nibble of byte 7
-    remote_state[7] = (((remote_state[0] & 0x0F) + (remote_state[1] & 0x0F) +
-                         (remote_state[2] & 0x0F) + (remote_state[3] & 0x0F)) &
-                        0x0F) << 4;
-  } else {
-    // Kelvinator-style block checksum for YAA/YAC/YAC1FB9/YAG/GENERIC
-    uint8_t sum = 10;
-    for (int i = 0; i < 4; i++) {
-      sum += (remote_state[i] & 0x0F);
-      sum += (remote_state[i] >> 4);
+    if (this->custom_fan_mode.has_value() && *this->custom_fan_mode == GREE_FAN_TURBO) {
+      rs[2] |= 0x10;
     }
-    remote_state[7] = (sum & 0x0F) << 4;
-    for (int i = 5; i < 7; i++) {
-      sum += (remote_state[i] & 0x0F);
-      sum += (remote_state[i] >> 4);
+    if (this->preset.has_value() && *this->preset == climate::CLIMATE_PRESET_SLEEP) {
+      rs[0] |= 0x80;
     }
-    remote_state[7] |= (sum & 0x0F);
   }
 
-  ESP_LOGD(TAG, "Sending frame: [%02X %02X %02X %02X %02X %02X %02X %02X]",
-           remote_state[0], remote_state[1], remote_state[2], remote_state[3],
-           remote_state[4], remote_state[5], remote_state[6], remote_state[7]);
+  rs[7] = this->checksum_(rs);
 
-  // ── IR pulse assembly ─────────────────────────────────────────────────────────
+  ESP_LOGD(TAG, "TX: %02X %02X %02X %02X | %02X %02X %02X %02X",
+           rs[0], rs[1], rs[2], rs[3], rs[4], rs[5], rs[6], rs[7]);
+
   auto transmit = this->transmitter_->transmit();
   auto *data = transmit.get_data();
-
-  uint32_t header_mark, header_space, bit_mark, message_space;
-
-  if (this->model_ == GREE_YAC || this->model_ == GREE_YAA) {
-    header_mark    = GREE_YAC_HEADER_MARK;
-    header_space   = GREE_YAC_HEADER_SPACE;
-    bit_mark       = GREE_YAC_BIT_MARK;
-    message_space  = GREE_MESSAGE_SPACE;
-  } else {
-    // YAC1FB9 uses generic 9000µs header (confirmed: upstream ESP sent 9063µs)
-    // not the 6000µs YAC header despite the model name suggesting otherwise
-    header_mark    = GREE_HEADER_MARK;
-    header_space   = GREE_HEADER_SPACE;
-    bit_mark       = GREE_BIT_MARK;
-    message_space  = GREE_MESSAGE_SPACE;
-  }
-
-  // Helper lambda to append one complete Gree frame into the shared buffer
-  auto append_frame = [&]() {
-    data->mark(header_mark);
-    data->space(header_space);
-
-    // Block 1: bytes 0-3, LSB first
-    for (int i = 0; i < 4; i++) {
-      for (int j = 0; j < 8; j++) {
-        data->mark(bit_mark);
-        data->space((remote_state[i] & (1 << j)) ? GREE_ONE_SPACE : GREE_ZERO_SPACE);
-      }
-    }
-
-    // Inter-block separator: 0, 0, 1
-    data->mark(bit_mark); data->space(GREE_ZERO_SPACE);
-    data->mark(bit_mark); data->space(GREE_ZERO_SPACE);
-    data->mark(bit_mark); data->space(GREE_ONE_SPACE);
-
-    data->mark(bit_mark);
-    data->space(message_space);
-
-    // Block 2: bytes 4-7, LSB first
-    for (int i = 4; i < 8; i++) {
-      for (int j = 0; j < 8; j++) {
-        data->mark(bit_mark);
-        data->space((remote_state[i] & (1 << j)) ? GREE_ONE_SPACE : GREE_ZERO_SPACE);
-      }
-    }
-
-    data->mark(bit_mark);
-    data->space(GREE_ZERO_SPACE);
-  };
-
   data->set_carrier_frequency(GREE_IR_FREQUENCY);
 
-  // Single frame transmission — matching upstream ESPHome Gree behaviour.
-  // The upstream component transmitted once and worked for basic commands.
-  append_frame();
+  uint32_t h_space = (this->model_ == GREE_YAC1FB9) ? GREE_YAC1FB9_HEADER_SPACE  : GREE_HEADER_SPACE;
+  uint32_t msg_gap = (this->model_ == GREE_YAC1FB9) ? GREE_YAC1FB9_MESSAGE_SPACE : GREE_MESSAGE_SPACE;
 
+  data->mark(GREE_HEADER_MARK);
+  data->space(h_space);
+
+  for (int i = 0; i < 4; i++) {
+    for (uint8_t mask = 1; mask > 0; mask <<= 1) {
+      data->mark(GREE_BIT_MARK);
+      data->space((rs[i] & mask) ? GREE_ONE_SPACE : GREE_ZERO_SPACE);
+    }
+  }
+
+  data->mark(GREE_BIT_MARK); data->space(GREE_ZERO_SPACE);
+  data->mark(GREE_BIT_MARK); data->space(GREE_ONE_SPACE);
+  data->mark(GREE_BIT_MARK); data->space(GREE_ZERO_SPACE);
+
+  data->mark(GREE_BIT_MARK);
+  data->space(msg_gap);
+
+  for (int i = 4; i < 8; i++) {
+    for (uint8_t mask = 1; mask > 0; mask <<= 1) {
+      data->mark(GREE_BIT_MARK);
+      data->space((rs[i] & mask) ? GREE_ONE_SPACE : GREE_ZERO_SPACE);
+    }
+  }
+
+  data->mark(GREE_BIT_MARK);
+  data->space(0);
   transmit.perform();
 }
 
-// ── Helper encoders ───────────────────────────────────────────────────────────
-
-uint8_t GreeClimate::operation_mode_() {
-  uint8_t mode = GREE_MODE_ON;
+uint8_t GreeClimate::encode_mode_() const {
   switch (this->mode) {
-    case climate::CLIMATE_MODE_COOL:       mode |= GREE_MODE_COOL; break;
-    case climate::CLIMATE_MODE_DRY:        mode |= GREE_MODE_DRY;  break;
-    case climate::CLIMATE_MODE_HEAT:       mode |= GREE_MODE_HEAT; break;
-    case climate::CLIMATE_MODE_FAN_ONLY:   mode |= GREE_MODE_FAN;  break;
-    case climate::CLIMATE_MODE_HEAT_COOL:  mode |= GREE_MODE_AUTO; break;
-    default: return GREE_MODE_OFF;
+    case climate::CLIMATE_MODE_COOL:      return GREE_MODE_ON | GREE_MODE_COOL;
+    case climate::CLIMATE_MODE_DRY:       return GREE_MODE_ON | GREE_MODE_DRY;
+    case climate::CLIMATE_MODE_HEAT:      return GREE_MODE_ON | GREE_MODE_HEAT;
+    case climate::CLIMATE_MODE_HEAT_COOL: return GREE_MODE_ON | GREE_MODE_AUTO;
+    case climate::CLIMATE_MODE_FAN_ONLY:  return GREE_MODE_ON | GREE_MODE_FAN;
+    case climate::CLIMATE_MODE_OFF:
+    default:                              return 0x00;
   }
-  return mode;
 }
 
-uint8_t GreeClimate::fan_speed_() {
-  // Custom fan modes take priority
-  if (this->has_custom_fan_mode()) {
-    auto cfm = this->get_custom_fan_mode();
-    if (cfm == GREE_CUSTOM_FAN_QUIET)       return GREE_FAN_AUTO;  // quiet bit set separately
-    if (cfm == GREE_CUSTOM_FAN_LOW_MEDIUM)  return GREE_FAN_2;
-    if (cfm == GREE_CUSTOM_FAN_MEDIUM_HIGH) return GREE_FAN_4;
-    if (cfm == GREE_CUSTOM_FAN_TURBO_SPEED) return GREE_FAN_5;
+uint8_t GreeClimate::encode_fan_() const {
+  if (this->custom_fan_mode.has_value()) {
+    const auto &m = *this->custom_fan_mode;
+    if (m == GREE_FAN_TURBO)    return GREE_FAN_3;
+    if (m == GREE_FAN_LOW_MED)  return GREE_FAN_1;
+    if (m == GREE_FAN_MED_HIGH) return GREE_FAN_3;
   }
   switch (this->fan_mode.value_or(climate::CLIMATE_FAN_AUTO)) {
+    case climate::CLIMATE_FAN_QUIET:  return GREE_FAN_1;
     case climate::CLIMATE_FAN_LOW:    return GREE_FAN_1;
-    case climate::CLIMATE_FAN_MEDIUM: return GREE_FAN_3;
-    case climate::CLIMATE_FAN_HIGH:   return GREE_FAN_5;
-    case climate::CLIMATE_FAN_QUIET:  return GREE_FAN_AUTO;  // YX1FF quiet bit handled above
+    case climate::CLIMATE_FAN_MEDIUM: return GREE_FAN_2;
+    case climate::CLIMATE_FAN_HIGH:   return GREE_FAN_3;
     default:                          return GREE_FAN_AUTO;
   }
 }
 
-uint8_t GreeClimate::temperature_() {
-  // Low nibble = temperature offset from min.
-  // Bit 4 (0x10) must be set for YAC1FB9 — confirmed from upstream working frames:
-  // upstream sends 0x13 for 19C, 0x14 for 20C etc. Without this bit the AC
-  // silently ignores all commands. Despite appearing as a "TimerHalfHr" bit
-  // in the IRremoteESP8266 struct it is a required protocol flag for this model.
-  uint8_t temp = (uint8_t) roundf(
-      clamp(this->target_temperature, (float)GREE_TEMP_MIN, (float)GREE_TEMP_MAX)
-  ) - GREE_TEMP_MIN;
-  if (this->model_ == GREE_YAC1FB9) {
-    temp |= 0x10;
+uint8_t GreeClimate::encode_temp_() const {
+  return (uint8_t)roundf(clamp<float>(this->target_temperature, GREE_TEMP_MIN, GREE_TEMP_MAX));
+}
+
+uint8_t GreeClimate::checksum_(const uint8_t *s) const {
+  if (this->model_ == GREE_YAN || this->model_ == GREE_YX1FF) {
+    return (uint8_t)(((s[0] << 4) + (s[1] << 4) + 0xC0) & 0xF0);
   }
-  return temp;
+  return ((((s[0] & 0x0F) + (s[1] & 0x0F) + (s[2] & 0x0F) + (s[3] & 0x0F) +
+            ((s[4] & 0xF0) >> 4) + ((s[5] & 0xF0) >> 4) + ((s[6] & 0xF0) >> 4) + 0x0A) &
+           0x0F) << 4);
 }
 
-uint8_t GreeClimate::preset_() {
-  if (this->preset.has_value() && this->preset.value() == climate::CLIMATE_PRESET_SLEEP)
-    return climate::CLIMATE_PRESET_SLEEP;
-  return 0;
+void GreeSwingSelect::control(const std::string &value) {
+  this->publish_state(value);
+  uint8_t pos = GreeClimate::option_to_pos(value);
+  if (is_vertical_)
+    this->parent_->set_swing_v(pos);
+  else
+    this->parent_->set_swing_h(pos);
 }
 
-}  // namespace esphome::gree
+}  // namespace gree
+}  // namespace esphome
